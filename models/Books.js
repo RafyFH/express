@@ -1,9 +1,14 @@
 // models/Book.js
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
-const Rack = require('./Racks');
+// const Rack = require('./Racks');
 
 const Book = sequelize.define('books', {
+  code: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    primaryKey: true,
+  },
   title: {
     type: DataTypes.STRING,
     allowNull: false,
@@ -12,17 +17,21 @@ const Book = sequelize.define('books', {
     type: DataTypes.STRING,
     allowNull: false,
   },
-  rack_id: {
+  stock: {
     type: DataTypes.INTEGER,
-    references: {
-      model: Rack,
-      key: 'id',
-    },
-    allowNull: true,
+    allowNull: false,
   },
+  // rack_id: {
+  //   type: DataTypes.INTEGER,
+  //   references: {
+  //     model: Rack,
+  //     key: 'id',
+  //   },
+  //   allowNull: true,
+  // },
 });
 
-Book.belongsTo(Rack, { foreignKey: 'rack_id', as: 'rack' });
-Rack.hasMany(Book, { foreignKey: 'rack_id', as: 'books' });
+// Book.belongsTo(Rack, { foreignKey: 'rack_id', as: 'rack' });
+// Rack.hasMany(Book, { foreignKey: 'rack_id', as: 'books' });
 
 module.exports = Book;

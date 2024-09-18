@@ -3,17 +3,40 @@ const Book = require("../models/Books");
 
 exports.postBooks = async (req, res) => {
     try {
-        const { title, author, rack_id } = req.body;
-        const book = await Book.create({ title, author, rack_id });
-        res.json(book);
+        const { title, author, stock } = req.body;
+        const titleInitials = title
+            .split(' ')
+            .map(word => word[0].toUpperCase())
+            .join('');
+
+        const authorInitials = author
+            .split(' ')
+            .map(name => name[0].toUpperCase())
+            .join('');
+
+        const bookCount = await Book.count();
+        const nextNumber = bookCount + 1;
+
+        const code = `${titleInitials}-${authorInitials}-${nextNumber}`;
+
+        const book = await Book.create({ code, title, author, stock});
+        res.status(200).json({
+            status: 200,
+            message: "success insert data",
+            data: book,
+        });
     } catch (error) {
         res.status(500).json({ message: "Error creating book", error });
     }   
 }
 exports.getBooks = async(req, res) => {
     try {
-        const books = await Book.findAll({include: 'rack'});
-        res.json(books);
+        const books = await Book.findAll();
+        res.status(200).json({
+            status: 200,
+            message: "success",
+            data: books,
+        });
     } catch {
         res.status(500).json({ message: "Error fetching books", error })
     }
@@ -25,17 +48,14 @@ exports.getBooksPageable = async (req, res) => {
     const search = req.query.search || ''; // filter global
     const author = req.query.author; // filter per field
     const title = req.query.title; // filter per field
-    const publishedDate = req.query.publishedDate; // filter per field
   
     if (limit < 1 || page < 1) {
       return res.status(400).json({ message: "Limit and page must be positive integers" });
     }
   
     try {
-      // Hitung offset berdasarkan halaman
       const offset = (page - 1) * limit;
-  
-      // Filter query
+
       const whereClause = {};
   
       // Filter global
@@ -55,10 +75,6 @@ exports.getBooksPageable = async (req, res) => {
         whereClause.title = { [Op.iLike]: `%${title}%` };
       }
   
-      if (publishedDate) {
-        whereClause.publishedDate = new Date(publishedDate);
-      }
-  
       // Ambil data buku dengan limit, offset, dan filter
       const { count, rows } = await Book.findAndCountAll({
         where: whereClause,
@@ -72,9 +88,61 @@ exports.getBooksPageable = async (req, res) => {
         totalPages: Math.ceil(count / limit),
         currentPage: page,
         itemsPerPage: limit,
-        books: rows
+        data: rows
       });
     } catch (error) {
       res.status(500).json({ message: "Error retrieving books", error });
     }
   };
+
+exports.getBooksById = async (req, res) => {
+    try {
+        const book = await Book.findByPk(req.params.id);
+        if (!book) {
+            return res.status(200).json({  status: 200, message: "Book not found" });
+        }else{
+            res.status(200).json({
+                status: 200,
+                message: "success",
+                data: book,
+            });
+        }
+    } catch (error) {
+        res.status(500).json({ message: "Error updating book", error });
+    }
+};
+
+exports.putBooks = async (req, res) => {
+    try {
+        const { title, author, stock } = req.body;
+        const book = await Book.findByPk(req.params.id);
+        if (!book) {
+            return res.status(404).json({ message: "Book not found" });
+        }
+        book.title = title;
+        book.author = author;
+        book.stock = stock;
+        await book.save();
+        res.status(200).json({
+            status: 200,
+            message: "success insert data",
+            data: book,
+        });
+    } catch (error) {
+        res.status(500).json({ message: "Error updating book", error });
+    }
+};
+
+exports.deleteBooks = async (req, res) => {
+    try {
+        const book = await Book.findByPk(req.params.id);
+        if (!book) {
+            return res.status(404).json({ message: "Book not found" });
+        }
+
+        await book.destroy();
+        res.json({ message: "Book deleted" });
+    } catch (error) {
+        res.status(500).json({ message: "Error deleting book", error });
+    }
+}

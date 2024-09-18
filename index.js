@@ -2,23 +2,25 @@
 const express = require('express');
 const cors = require('cors');
 const sequelize = require('./config/database');
-const authRoutes = require('./routes/auth');
-const rackRoutes = require('./routes/racks');
+// const authRoutes = require('./routes/auth');
+// const rackRoutes = require('./routes/racks');
 const bookRoutes = require('./routes/books');
+const memberRoutes = require('./routes/members');
+const borrowRoutes = require('./routes/borrows');
 
 const app = express();
-
-app.use(cors({
-    origin: '*', // Izinkan semua origin, bisa diganti dengan domain tertentu
-    methods: ['GET', 'POST', 'PUT', 'DELETE'], // Metode HTTP yang diizinkan
-    allowedHeaders: ['Content-Type', 'Authorization'] // Header yang diizinkan
-}));
+//
+// app.use(cors({
+//     origin: '*', // Izinkan semua origin, bisa diganti dengan domain tertentu
+//     methods: ['GET', 'POST', 'PUT', 'DELETE'], // Metode HTTP yang diizinkan
+//     allowedHeaders: ['Content-Type', 'Authorization'] // Header yang diizinkan
+// }));
 
 app.use(express.json());
 // Routes
-app.use('/auth', authRoutes);
-app.use('/racks', rackRoutes);
+app.use('/borrows', borrowRoutes);
 app.use('/books', bookRoutes);
+app.use('/members', memberRoutes);
 
 // Sinkronisasi Database
 sequelize.sync().then(() => {
