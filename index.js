@@ -1,35 +1,49 @@
-// index.js
 const express = require('express');
 const cors = require('cors');
 const sequelize = require('./config/database');
-// const authRoutes = require('./routes/auth');
-// const rackRoutes = require('./routes/racks');
+const Member = require('./models/Members');
+const Book = require('./models/Books');
+const Borrow = require('./models/Borrows');
 const bookRoutes = require('./routes/books');
 const memberRoutes = require('./routes/members');
 const borrowRoutes = require('./routes/borrows');
 
 const app = express();
-//
-// app.use(cors({
-//     origin: '*', // Izinkan semua origin, bisa diganti dengan domain tertentu
-//     methods: ['GET', 'POST', 'PUT', 'DELETE'], // Metode HTTP yang diizinkan
-//     allowedHeaders: ['Content-Type', 'Authorization'] // Header yang diizinkan
-// }));
 
+// Middleware
 app.use(express.json());
-// Routes
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+Member.hasMany(Borrow, { foreignKey: 'member_code', as: 'borrows' });
+Borrow.belongsTo(Member, { foreignKey: 'member_code', as: 'member' });
+
+Book.hasMany(Borrow, { foreignKey: 'book_code', as: 'borrows' });
+Borrow.belongsTo(Book, { foreignKey: 'book_code', as: 'book' });
+
+// Routing
 app.use('/borrows', borrowRoutes);
 app.use('/books', bookRoutes);
 app.use('/members', memberRoutes);
 
-// Sinkronisasi Database
-sequelize.sync().then(() => {
-  console.log('Database connected');
-}).catch((err) => {
-  console.error('Unable to connect to the database:', err);
-});
+// Sinkronisasi Database dan Start Server
+sequelize.sync({ force: true })
+    .then(() => {
+      console.log('Database connected');
+      const PORT = process.env.PORT || 6000;
+      app.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT}`);
+      });
+    })
+    .catch((err) => {
+      console.error('Unable to connect to the database:', err);
+    });
 
-const PORT = process.env.PORT || 6000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+// Error Handling Middleware (Optional)
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).send('Something broke!');
 });

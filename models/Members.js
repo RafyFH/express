@@ -1,7 +1,5 @@
-// models/Book.js
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
-// const Rack = require('./Racks');
 
 const Member = sequelize.define('members', {
     code: {
@@ -13,9 +11,10 @@ const Member = sequelize.define('members', {
         type: DataTypes.STRING,
         allowNull: false,
     },
+    penalty_end_date: {
+        type: DataTypes.DATE,
+        allowNull: true,
+    },
 });
-
-// Book.belongsTo(Rack, { foreignKey: 'rack_id', as: 'rack' });
-// Rack.hasMany(Book, { foreignKey: 'rack_id', as: 'books' });
 
 module.exports = Member;

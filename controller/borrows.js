@@ -1,147 +1,94 @@
 const { Sequelize, Transaction } = require('sequelize');
 const sequelize = require('../config/database');
-const Borrow = require('../models/Borrows');
 const Book = require('../models/Books');
 const Member = require('../models/Members');
-const BorrowBooks = require('../models/BorrowBooks');
-const Penalized = require('../models/Penalized');
+const Borrow = require('../models/Borrows');
+const moment = require("moment");
 
 exports.borrowBook = async (req, res) => {
-    const transaction = await sequelize.transaction();
+    const { memberCode, bookCodes } = req.body;
+
     try {
-        const { member_code, book_codes } = req.body;
-
-        const member = await Member.findByPk(member_code, { transaction });
-        if (!member) {
-            await transaction.rollback();
-            return res.status(404).json({ message: 'Member not found' });
+        if (!Array.isArray(bookCodes) || bookCodes.length === 0 || bookCodes.length > 2) {
+            return res.status(400).json({ error: 'Member hanya bisa meminjam 1 atau 2 buku.' });
         }
 
-        const today = new Date();
-        if (member.is_penalized && member.penalized_until > today) {
-            await transaction.rollback();
-            return res.status(403).json({ message: `Member is penalized until ${member.penalized_until}` });
+        const member = await Member.findOne({ where: { code: memberCode } });
+        if (member.penalty_end_date && moment().isBefore(member.penalty_end_date)) {
+            return res.status(403).json({ error: 'Member sedang dalam masa penalti. Tidak bisa meminjam buku.' });
         }
 
-        const borrowedBooksCount = await BorrowBooks.count({
-            include: {
-                model: Borrow,
-                where: { member_code, return_date: null }
+        const activeBorrows = await Borrow.count({
+            where: {
+                member_code: memberCode,
+                status: 'borrowed',
             },
-            transaction
         });
 
-        if (borrowedBooksCount >= 2) {
-            await transaction.rollback();
-            return res.status(400).json({ message: 'Member already borrowed 2 books' });
+        if (activeBorrows + bookCodes.length > 2) {
+            return res.status(400).json({ error: 'Member sudah meminjam buku atau melebihi batas peminjaman (maksimal 2).' });
         }
 
-        const activeBorrowsCount = await BorrowBooks.count({
-            include: {
-                model: Borrow,
-                where: { member_code, return_date: null }
-            },
-            transaction
-        });
+        for (const bookCode of bookCodes) {
+            const book = await Book.findOne({ where: { code: bookCode } });
 
-        if (activeBorrowsCount >= 2) {
-            await transaction.rollback();
-            return res.status(400).json({ message: 'Member already borrowed 2 books' });
-        }
-
-
-        const borrowCount = await Borrow.count({ transaction });
-        const nextNumber = borrowCount + 1;
-
-        const code = `B${nextNumber}`;
-
-        const borrow = await Borrow.create({
-            code,
-            member_code,
-            borrow_date: today,
-            due_date: new Date(today.setDate(today.getDate() + 7))
-        }, { transaction });
-
-        for (const book_code of book_codes) {
-            const book = await Book.findByPk(book_code, { transaction });
             if (!book || book.stock <= 0) {
-                await transaction.rollback();
-                return res.status(400).json({ message: `Book ${book_code} is not available or out of stock` });
+                return res.status(404).json({ error: `Buku dengan kode ${bookCode} tidak ditemukan atau stok habis.` });
             }
 
             book.stock -= 1;
-            await book.save({ transaction });
+            await book.save();
 
-            await BorrowBooks.create({
-                borrow_code: borrow.code,
-                book_code
-            }, { transaction });
+            await Borrow.create({
+                member_code: memberCode,
+                book_code: bookCode,
+                borrow_date: new Date(),
+                status: 'borrowed',
+            });
         }
 
-        await transaction.commit();
-        res.status(200).json({ message: 'Books borrowed successfully', data: borrow });
+        res.json({ message: 'Buku berhasil dipinjam!', books: bookCodes });
     } catch (error) {
-        await transaction.rollback();
-        res.status(500).json({ message: 'Error borrowing books', error });
+        res.status(500).json({ error: error.message });
     }
 };
 
 exports.returnBook = async (req, res) => {
-    try {
-        const { member_code, book_code } = req.body;
+    const { memberCode, bookCode } = req.body;
 
+    try {
         const borrow = await Borrow.findOne({
             where: {
-                member_code,
-                return_date: null
+                member_code: memberCode,
+                book_code: bookCode,
+                status: 'borrowed',
             },
-            include: {
-                model: Book,
-                as: 'books',
-                where: { code: book_code }
-            }
         });
 
         if (!borrow) {
-            return res.status(404).json({ message: 'Borrow record not found' });
+            return res.status(400).json({ error: 'Peminjaman tidak ditemukan.' });
         }
 
+        const borrowDate = moment(borrow.borrow_date);
+        const currentDate = moment();
+        const isLate = currentDate.isAfter(borrowDate.add(7, 'days'));
+
         borrow.return_date = new Date();
+        borrow.status = 'returned';
         await borrow.save();
 
-        const book = await Book.findByPk(book_code);
+        const book = await Book.findOne({ where: { code: bookCode } });
         book.stock += 1;
         await book.save();
 
-        if (borrow.return_date > borrow.due_date) {
-            const member = await Member.findByPk(member_code);
-            const penalizedUntil = new Date();
-            penalizedUntil.setDate(penalizedUntil.getDate() + 3);
-            member.is_penalized = true;
-            member.penalized_until = penalizedUntil;
+        if (isLate) {
+            const member = await Member.findOne({ where: { code: memberCode } });
+            member.penalty_end_date = moment().add(3, 'days').toDate(); // Tambah 3 hari penalti
             await member.save();
-
-            await Penalized.create({
-                member_code,
-                penalized_until
-            });
         }
 
-        res.status(200).json({ message: 'Book returned successfully' });
+        return res.json({ message: 'Buku berhasil dikembalikan!', borrow });
     } catch (error) {
-        res.status(500).json({ message: 'Error returning book', error });
-    }
-};
-
-exports.getPenalizedMembers = async (req, res) => {
-    try {
-        const penalizedMembers = await Penalized.findAll();
-        res.status(200).json({
-            status: 200,
-            message: "success fetch penalized members",
-            data: penalizedMembers
-        });
-    } catch (error) {
-        res.status(500).json({ message: "Error fetching penalized members", error });
+        return res.status(400).json({ error: error.message });
     }
 };
